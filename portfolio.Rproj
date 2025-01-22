@@ -1,0 +1,16 @@
+Version: 1.0
+ProjectId: df0de7b6-b81a-4499-9d5c-a040f2ab8a79
+
+RestoreWorkspace: Default
+SaveWorkspace: Default
+AlwaysSaveHistory: Default
+
+EnableCodeIndexing: Yes
+UseSpacesForTab: Yes
+NumSpacesForTab: 2
+Encoding: UTF-8
+
+RnwWeave: Sweave
+LaTeX: pdfLaTeX
+
+ProjectName: Diwakar-Basnet.github.io

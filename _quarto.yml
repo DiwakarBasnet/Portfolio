@@ -1,0 +1,31 @@
+project:
+  type: website
+
+website:
+  title: "Diwakar Basnet"
+  search: 
+    location: navbar
+    type: overlay
+  navbar:
+    background: dark
+    right:
+      - text: About
+        href: index.qmd
+      - text: Blog
+        href: projects.qmd
+      - text: Resume
+        href: resume.qmd
+    tools:
+      - icon: github
+        href: https://github.com/DiwakarBasnet
+      - icon: linkedin
+        href: https://www.linkedin.com/in/diwakar-basnet/
+      - icon: medium
+        href: https://medium.com/@7diwakarbasnet
+format:
+  html:
+    theme: zephyr
+    css: styles.css
+
+
+
