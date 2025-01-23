@@ -1,8 +1,8 @@
 [
   {
-    "listing": "/projects.html",
+    "listing": "/blogs.html",
     "items": [
-      "/posts/matrix_multiplication/index.html"
+      "/blogs/matrix_multiplication/index.html"
     ]
   }
 ]
