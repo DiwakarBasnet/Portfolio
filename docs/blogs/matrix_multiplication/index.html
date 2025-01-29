@@ -158,6 +158,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <ul class="collapse">
   <li><a href="#l2-cache-optimization" id="toc-l2-cache-optimization" class="nav-link" data-scroll-target="#l2-cache-optimization">L2 Cache optimization</a></li>
   <li><a href="#pointer-arithmetic" id="toc-pointer-arithmetic" class="nav-link" data-scroll-target="#pointer-arithmetic">Pointer Arithmetic</a></li>
+  <li><a href="#computation-loop" id="toc-computation-loop" class="nav-link" data-scroll-target="#computation-loop">Computation Loop</a></li>
+  <li><a href="#writing-back-in-output-matrix" id="toc-writing-back-in-output-matrix" class="nav-link" data-scroll-target="#writing-back-in-output-matrix">Writing Back in Output Matrix</a></li>
   </ul></li>
   </ul>
 </nav>
@@ -230,7 +232,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <figcaption>2D row-major memory layout</figcaption>
 </figure>
 </div>
-<p>The <code>BLOCK_SIZE_M</code>, <code>BLOCK_SIZE_N</code> and <code>BLOCK_SIZE_K</code> the size of our block along those axises. <code>GROUP_SIZE_M</code> is the maximum number of rows per group.</p>
+<p>The <code>BLOCK_SIZE_M</code>, <code>BLOCK_SIZE_N</code> and <code>BLOCK_SIZE_K</code> are the size of our block along those axises. <code>GROUP_SIZE_M</code> is the maximum number of rows per group.</p>
 <section id="l2-cache-optimization" class="level3">
 <h3 class="anchored" data-anchor-id="l2-cache-optimization">L2 Cache optimization</h3>
 <div id="ed416a08-5d63-42eb-9445-4caa5e53d419" class="cell">
@@ -249,13 +251,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>    pid_n <span class="op">=</span> (pid <span class="op">%</span> num_pid_in_group) <span class="op">//</span> group_size_m</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>The <code>num_pid_m</code> is the number of blocks in the M axis and <code>num_pid_n</code> is the number of blocks in the N axis. Suppose <code>N = 384</code> and <code>BLOCK_SIZE_N = 128</code> then <code>num_pid_n = ceil(384/128) = 3</code> i.e.&nbsp;there are 3 blocks in a row. Let’s consider <code>GROUP_SIZE_M = 2</code> then <code>num_pid_in_group = 2 * 3 = 6</code> i.e a group in our C matrix contains 6 program ids (each block is 1 pid). For a given program id we can find the group in which it belongs to by <code>group_id = pid // num_pid_in_group</code>. Then we calculate the starting row index in matrix A and C for the current group of thread blocks using <code>first_pid_m = group_id * GROUP_SIZE_M</code>.</p>
+<p>Instead of processing an entire matrix at once, we break our matrix into blocks. Each block fits into to the L1 cache.</p>
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
 <p><img src="group.png" class="img-fluid figure-img"></p>
 <figcaption>Blocks and group</figcaption>
 </figure>
 </div>
-<p>The <code>group_size_m</code> is a runtime variable that calculates the actual number of rows a group processes, since there can be edge cases when total rows is less then <code>GROUP_SIZE_M</code>. The example table below shows the calculation of <code>pid_m</code> and <code>pid_n</code> for <code>num_pid_m = 3</code>, <code>num_pid_n = 3</code>, and <code>GROUP_SIZE_M = 2</code>.</p>
+<p>The <code>group_size_m</code> is a runtime variable that calculates the actual number of rows a group processes, since there can be edge cases when total rows is less then <code>GROUP_SIZE_M</code>. The example table below shows the calculation of <code>pid_m</code> and <code>pid_n</code> for <code>num_pid_m = 3</code>, <code>num_pid_n = 3</code>, and <code>GROUP_SIZE_M = 2</code>. This grouping strategy is used to optimize L2 cache usage by having nearby threads work on blocks that share data.</p>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -322,7 +325,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 </tbody>
 </table>
-<p>Calculating our output matrix in grouped ordering instead of row-major ordering has an added benefit of loading fewer number of blocks into our cache as seen in the picture from official triton tutorial.</p>
+<p>Threads <code>(pid)</code> in same group work on contiguous rows of the output matrix. For example: * <code>pid=0</code> to <code>pid=5</code> work on rows 0 and 1 of the output matrix. * <code>pid=6</code> to <code>pid=8</code> work on row 2.</p>
+<p>This means that threads in the same group access nearby memory locations in the input matrices (A and B), which improves spatial locality. When one thread loads a block of data into the L2 cache, nearby threads can reuse that data, reducing the number of global memory accesses. Without grouping, threads might access disjoint regions of memory, causing frequent cache thrashing. Grouping ensures that threads in the same group access overlapping or nearby regions, reducing cache thrashing. Or simply, threads within a group compute blocks of C that are close to each other in memory, improving L2 cache utilization.</p>
+<p>Calculating our output matrix in grouped ordering instead of row-major ordering has an added benefit of loading fewer number of blocks into our cache as seen in the picture from official triton tutorial. Grouping also enables multiple threads to work on contiguous regions of the output matrix C, enabling efficient parallel execution.</p>
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
 <p><a href="https://triton-lang.org/main/_images/grouped_vs_row_major_ordering.png"><img src="grouped_vs_row_major_ordering.png" class="img-fluid figure-img" alt="Group ordering vs row-major ordering"></a></p>
@@ -333,7 +338,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="pointer-arithmetic" class="level3">
 <h3 class="anchored" data-anchor-id="pointer-arithmetic">Pointer Arithmetic</h3>
 <div id="9cd59578-82db-429b-9ce8-df95abbabd06" class="cell">
-<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co">"""Accessing blocks in matrix A and B"""</span></span>
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co">"""Accessing blocks in matrices A and B"""</span></span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="co"># ----------------------------------------------------------</span></span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Create pointers for the first blocks of A and B.</span></span>
 <span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="co"># We will advance this pointer as we move in the K direction</span></span>
@@ -347,6 +352,47 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    a_ptrs <span class="op">=</span> a_ptr <span class="op">+</span> (offs_am[:, <span class="va">None</span>] <span class="op">*</span> stride_am <span class="op">+</span> offs_k[<span class="va">None</span>, :] <span class="op">*</span> stride_ak)</span>
 <span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>    b_ptrs <span class="op">=</span> b_ptr <span class="op">+</span> (offs_k[:, <span class="va">None</span>] <span class="op">*</span> stride_bk <span class="op">+</span> offs_bn[<span class="va">None</span>, :] <span class="op">*</span> stride_bn)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
+<p><code>offs_am</code> calculates the row offsets within the current block of matrix A i.e.&nbsp;the block in matrix A with a certain “pid_m”. The result is taken a modulo <code>M</code> to wrap around if the offsets exceed the matrix dimensions. It provides the row offsets within the current 2x2 block in matrix A. Similarly, <code>offs_bn</code> calculates the column offsets within the 2x2 block in matrix B and <code>offs_k</code> calculates the column offsets in 2x2 block in matrix A and row offsets in 2x2 block in matrix B. The <code>a_ptrs</code> and <code>b_ptrs</code> calculates a 2D grid pointers to access the current block in matrix A and B respectively. <code>a_ptrs</code> points to a block in matrix A of size <code>BLOCK_SIZE_M X BLOCK_SIZE_K</code>, similarly <code>b_ptrs</code> points to a block in matrix B of size <code>BLOCK_SIZE_K X BLOCK_SIZE_N</code>.</p>
+</section>
+<section id="computation-loop" class="level3">
+<h3 class="anchored" data-anchor-id="computation-loop">Computation Loop</h3>
+<div id="6297a96e-6c2f-4cdb-9443-e63d43f5845d" class="cell">
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>    <span class="co"># ------------------------------------------------------------</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Iterate to compute a block of the C matrix.</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="co"># We accumulate into a `[BLOCK_SIZE_M, BLOCK_SIZE_N]` block</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="co"># of fp32 values for higher accuracy.</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="co"># `accumulator` will be converted back to fp16 after the loop.</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    accumulator <span class="op">=</span> tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype<span class="op">=</span>tl.float32)</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> k <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">0</span>, tl.cdiv(K, BLOCK_SIZE_K)):</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Load the next block of A and B, generate a mask by checking the K dimension.</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>        <span class="co"># If it is out of bounds, set it to 0.</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>        a <span class="op">=</span> tl.load(a_ptrs, mask<span class="op">=</span>offs_k[<span class="va">None</span>, :] <span class="op">&lt;</span> K <span class="op">-</span> k <span class="op">*</span> BLOCK_SIZE_K, other<span class="op">=</span><span class="fl">0.0</span>)</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>        b <span class="op">=</span> tl.load(b_ptrs, mask<span class="op">=</span>offs_k[:, <span class="va">None</span>] <span class="op">&lt;</span> K <span class="op">-</span> k <span class="op">*</span> BLOCK_SIZE_K, other<span class="op">=</span><span class="fl">0.0</span>)</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>        <span class="co"># We accumulate along the K dimension.</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>        accumulator <span class="op">=</span> tl.dot(a, b, accumulator)</span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Advance the ptrs to the next K block.</span></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>        a_ptrs <span class="op">+=</span> BLOCK_SIZE_K <span class="op">*</span> stride_ak</span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>        b_ptrs <span class="op">+=</span> BLOCK_SIZE_K <span class="op">*</span> stride_bk</span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>    <span class="co"># You can fuse arbitrary activation functions here</span></span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>    <span class="co"># while the accumulator is still in FP32!</span></span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> ACTIVATION <span class="op">==</span> <span class="st">"leaky_relu"</span>:</span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a>        accumulator <span class="op">=</span> leaky_relu(accumulator)</span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a>    c <span class="op">=</span> accumulator.to(tl.float16)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Now, block wise matrix multiplication is carried out according to the <code>pid</code> of the block. The <code>accumulator</code> is a block of size <code>BLOCK_SIZE_M X BLOCK_SIZE_N</code>, which holds the accumulated dot product of the block corresponding to <code>C</code>. Each thread computes its block in <code>C</code> by iterating over the <code>K</code> dimension and performing block wise multiplication of <code>A</code> and <code>B</code>. Threads in the same group access contiguous rows of <code>A</code> and the same columns of <code>B</code>.</p>
+</section>
+<section id="writing-back-in-output-matrix" class="level3">
+<h3 class="anchored" data-anchor-id="writing-back-in-output-matrix">Writing Back in Output Matrix</h3>
+<div id="db2cb09d-46a5-4bc2-b529-333641943146" class="cell">
+<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co"># -----------------------------------------------------------</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Write back the block of the output matrix C with masks.</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    offs_cm <span class="op">=</span> pid_m <span class="op">*</span> BLOCK_SIZE_M <span class="op">+</span> tl.arange(<span class="dv">0</span>, BLOCK_SIZE_M)</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    offs_cn <span class="op">=</span> pid_n <span class="op">*</span> BLOCK_SIZE_N <span class="op">+</span> tl.arange(<span class="dv">0</span>, BLOCK_SIZE_N)</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    c_ptrs <span class="op">=</span> c_ptr <span class="op">+</span> stride_cm <span class="op">*</span> offs_cm[:, <span class="va">None</span>] <span class="op">+</span> stride_cn <span class="op">*</span> offs_cn[<span class="va">None</span>, :]</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    c_mask <span class="op">=</span> (offs_cm[:, <span class="va">None</span>] <span class="op">&lt;</span> M) <span class="op">&amp;</span> (offs_cn[<span class="va">None</span>, :] <span class="op">&lt;</span> N)</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>    tl.store(c_ptrs, c, mask<span class="op">=</span>c_mask)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>The <code>tl.store(c_ptrs, c, mask=c_mask)</code> stores the accumulated block multiplication into our <code>c_ptrs</code> location, which is calculated using the offsets and masked similar to how we calculated <code>a_ptrs</code> and <code>b_ptrs</code>.</p>
 
 
 </section>
