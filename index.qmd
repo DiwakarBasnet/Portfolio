@@ -17,11 +17,15 @@ about:
       href: mailto:7diwakarbasnet@gmail.com
 ---
 
-AI enthusiast with a strong passion for deep learning, computer vision, and natural language processing. I enjoy exploring new technologies and advancements in the field of deep learning. Recently, I’ve started delving into graph neural networks and OpenAI Triton programming, further expanding my expertise and interests.
+AI enthusiast with a strong passion for deep learning, computer vision, and natural language processing. I enjoy exploring new technologies and advancements in the field of deep learning. Recently, I’ve started delving into CUDA and OpenAI Triton programming, further expanding my expertise and interests.
 
 ### Experience
 
-**Treeleaf Technologies** | NLP Developer | Feb 2024 - May 2024
+**NavaNexa Tech** | ML Engineer | Feb 2025 - Present
+
+Worked on Optimizing YOLOv8 model for QR detection and OCR tasks, coverted models to mobile suitable format.
+
+**Treeleaf Technologies** | NLP Developer | Feb 2024 - Aug 2024
 
 Worked on advanced AI applications, focusing on Automatic Speech Recognition (ASR) and Text-to-Speech (TTS) systems to enhance user interaction. Built and optimized a Retrieval-Augmented Generation (RAG) system for efficient information retrieval and enhanced conversational AI.
 
