@@ -206,7 +206,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="understanding-matmul-kernel" class="level2">
 <h2 class="anchored" data-anchor-id="understanding-matmul-kernel">Understanding matmul kernel</h2>
 <p>Suppose we have matrix A with dimension (M x K) and matrix B with dimension (K X N) then our resulting matrix C has dimension (M x N).</p>
-<div id="1719559d-0172-47c8-b827-71b4110a0b94" class="cell">
+<div id="1719559d-0172-47c8-b827-71b4110a0b94" class="cell" data-execution_count="1">
 <div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="at">@triton.jit</span></span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> matmul_kernel(</span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Pointers to matrices</span></span>
@@ -224,6 +224,15 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>        GROUP_SIZE_M: tl.constexpr,  <span class="co">#</span></span>
 <span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>        ACTIVATION: tl.constexpr  <span class="co">#</span></span>
 <span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>):</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-error">
+<div class="ansi-escaped-output">
+<pre><span class="ansi-cyan-fg">  Cell </span><span class="ansi-green-fg">In[1], line 17</span>
+<span class="ansi-red-fg">    ):</span>
+      ^
+<span class="ansi-red-fg">SyntaxError</span><span class="ansi-red-fg">:</span> incomplete input
+</pre>
+</div>
+</div>
 </div>
 <p>The <code>@triton.jit</code> decorator in Triton is used to compile a Python function as a Triton kernel allowing it to be executed efficiently in GPU. The <code>a_ptr</code>, <code>b_ptr</code> and <code>c_ptr</code> are the pointers to matrices A, B and C respectively. These contain the starting memory address in GPU global memory for the matrix i.e.&nbsp;a_ptr contains the memory address for A[0][0]. In GPU, matrices are stored in row-major order, which means that every elemets of our 2D matrix are stored in 1D memory layout. So for this reason we require stride to get next row element or column element of our matrix. <code>stride_am</code> represents number of elements in 1D memory layout to skip so that we obtain the element of our next row in matrix A and similarly <code>stride_ak</code> represents number of elements in 1D memory layout to skip so that we obtain the element of our next column in matrix A, which is usually 1.</p>
 <div class="quarto-figure quarto-figure-center">
